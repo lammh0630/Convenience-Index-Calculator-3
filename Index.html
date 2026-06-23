@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>方便指數計算器 - 明愛粉嶺陳震夏中學 (樓層互動版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+  <style>
+    .floor { height: 82px; transition: all 0.2s; }
+    .floor:hover { background-color: #f0fdf4; }
+    .grade-block { 
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: grab;
+    }
+    .grade-block:active { cursor: grabbing; transform: scale(0.95); }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-emerald-50 to-teal-50 min-h-screen">
+
+<div class="max-w-7xl mx-auto p-6">
+  <div class="text-center mb-10">
+    <h1 class="text-5xl font-bold text-gray-800 mb-2">方便指數計算器</h1>
+    <p class="text-3xl text-emerald-600">明愛粉嶺陳震夏中學 - 樓層互動版</p>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+    <!-- 左側樓層圖 -->
+    <div class="lg:col-span-7 bg-white rounded-3xl shadow-xl p-8 border border-emerald-100">
+      <h2 class="text-2xl font-semibold mb-6 flex items-center gap-3 text-gray-700">
+        <i class="fa-solid fa-building-columns text-emerald-600"></i> 學校樓層圖
+      </h2>
+      <div id="floorPlan" class="space-y-3"></div>
+
+      <div class="mt-8 pt-6 border-t">
+        <h3 class="font-semibold text-gray-700 mb-4">各年級最終樓層（平均）</h3>
+        <div id="floorSummary" class="grid grid-cols-2 md:grid-cols-3 gap-4"></div>
+      </div>
+    </div>
+
+    <!-- 右側 -->
+    <div class="lg:col-span-5 space-y-8">
+
+      <!-- 年級方塊 -->
+      <div class="bg-white rounded-3xl shadow-xl p-8 border border-emerald-100">
+        <h3 class="text-xl font-semibold mb-5 text-gray-700">年級方塊（拖動到左側樓層）</h3>
+        <div id="gradeBlocks" class="grid grid-cols-3 gap-4"></div>
+      </div>
+
+      <!-- 目的地 + 機率 -->
+      <div class="bg-white rounded-3xl shadow-xl p-8 border border-emerald-100">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="text-xl font-semibold text-gray-700">目的地設定</h3>
+          <button onclick="addDestination()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-2xl text-sm flex items-center gap-2">
+            <i class="fa-solid fa-plus"></i> 新增
+          </button>
+        </div>
+        <div id="destinationsContainer" class="space-y-6"></div>
+
+        <h3 class="text-lg font-semibold mt-10 mb-4 text-gray-700">各年級機率</h3>
+        <div id="probTableContainer" class="overflow-x-auto"></div>
+      </div>
+
+      <!-- 公式 -->
+      <div class="bg-white rounded-3xl shadow-xl p-8 border border-emerald-100">
+        <h3 class="text-xl font-semibold mb-4 text-gray-700">計算公式</h3>
+        <div id="dynamicFormula" class="bg-emerald-50 p-6 rounded-2xl text-sm leading-relaxed border border-emerald-100"></div>
+      </div>
+
+      <!-- 全校指數 -->
+      <div class="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-3xl p-8 text-white text-center shadow-xl">
+        <p class="opacity-90">全校加權平均方便指數</p>
+        <div id="overallIndex" class="text-6xl font-bold mt-2">1.507</div>
+      </div>
+
+      <button onclick="showAllConfigurations()" 
+              class="w-full py-6 bg-white text-emerald-700 border-2 border-emerald-600 rounded-3xl text-xl font-bold flex items-center justify-center gap-3 hover:bg-emerald-50">
+        <i class="fa-solid fa-shuffle"></i> 顯示全部排序
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="optModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+    <div class="p-8 border-b flex justify-between items-center">
+      <h2 class="text-2xl font-bold" id="modalTitle">全部排序配置</h2>
+      <button onclick="toggleSortMode()" id="modalSortBtn" class="px-6 py-3 border-2 border-emerald-600 text-emerald-600 rounded-2xl hover:bg-emerald-50">切換為由高至低排序</button>
+    </div>
+    <div id="optResults" class="p-8 max-h-[65vh] overflow-auto space-y-6"></div>
+    <div class="p-6 border-t">
+      <button onclick="closeModal()" class="w-full py-4 bg-gray-100 hover:bg-gray-200 rounded-2xl font-medium">關閉</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// 預設數據
+const defaultDestinations = [
+  {id:1, name:"操場", floor:0},
+  {id:2, name:"圖書館", floor:3},
+  {id:3, name:"教員室", floor:1}
+];
+
+const defaultGrades = [
+  {id:1, name:"中一", floors:[0], students:136, probs:[0.2868,0.0088,0.0897]},
+  {id:2, name:"中二", floors:[0], students:166, probs:[0.2157,0.0337,0.1036]},
+  {id:3, name:"中三", floors:[0], students:168, probs:[0.1857,0.0476,0.0714]},
+  {id:4, name:"中四", floors:[0], students:164, probs:[0.1476,0.0293,0.0378]},
+  {id:5, name:"中五", floors:[0], students:145, probs:[0.1490,0.0152,0.0110]},
+  {id:6, name:"中六", floors:[0], students:150, probs:[0.05,0.05,0.05]}
+];
+
+let destinations = JSON.parse(JSON.stringify(defaultDestinations));
+let grades = JSON.parse(JSON.stringify(defaultGrades));
+let currentSortMode = 'lowToHigh';
+const colors = ['#ef4444','#3b82f6','#eab308','#10b981','#f59e0b','#8b5cf6'];
+
+function getAverageFloor(grade) {
+  return grade.floors.length ? (grade.floors.reduce((a,b)=>a+b,0) / grade.floors.length) : null;
+}
+
+function updateFormulaDisplay() {
+  const terms = destinations.map(d => `P(${d.name}) × |層差|`).join(' + ');
+  document.getElementById('dynamicFormula').innerHTML = `<strong>上落層數期望值：</strong><br>E = (${terms}) × 2`;
+}
+
+function calculateExpectation(grade) {
+  const avg = getAverageFloor(grade);
+  if (avg === null) return 0;
+  let total = 0;
+  destinations.forEach((dest,i) => total += (grade.probs[i]||0) * Math.abs(avg - dest.floor));
+  return total * 2;
+}
+
+function calculateSchoolAverage() {
+  let totalW = 0, totalS = 0;
+  grades.forEach(g => {
+    if (g.floors.length > 0) {
+      totalW += calculateExpectation(g) * g.students;
+      totalS += g.students;
+    }
+  });
+  return totalS ? (totalW / totalS).toFixed(3) : "0.000";
+}
+
+// 樓層圖渲染
+function renderFloorPlan() {
+  const container = document.getElementById('floorPlan');
+  container.innerHTML = '';
+  const floorLabels = ["5/F","4/F","3/F","2/F","1/F","G/F"];
+  const floorValues = [5,4,3,2,1,0];
+
+  floorLabels.forEach((label, index) => {
+    const f = floorValues[index];
+    const floorDiv = document.createElement('div');
+    floorDiv.className = `floor bg-white border-2 border-emerald-200 rounded-2xl flex items-center px-6 shadow-sm`;
+    floorDiv.dataset.floor = f;
+    floorDiv.innerHTML = `
+      <div class="w-16 font-semibold text-lg text-emerald-700">${label}</div>
+      <div class="flex-1 flex flex-wrap gap-3 min-h-[52px] items-center py-2" id="dropzone-${f}"></div>
+    `;
+    container.appendChild(floorDiv);
+
+    const dropzone = floorDiv.querySelector(`#dropzone-${f}`);
+    dropzone.addEventListener('dragover', e => e.preventDefault());
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      const data = e.dataTransfer.getData('text/plain').split('|');
+      const gradeId = parseInt(data[0]);
+      const oldFloor = data.length > 1 ? parseFloat(data[1]) : null;
+      const grade = grades.find(g => g.id === gradeId);
+      if (grade) {
+        if (oldFloor !== null) {
+          grade.floors = grade.floors.filter(fl => fl !== oldFloor);
+        }
+        if (!grade.floors.includes(f)) {
+          grade.floors.push(f);
+        }
+        renderFloorPlan();
+        renderFloorSummary();
+        updateOverall();
+      }
+    });
+  });
+  renderGradeBlocksOnFloors();
+}
+
+function renderGradeBlocksOnFloors() {
+  document.querySelectorAll('[id^="dropzone-"]').forEach(zone => zone.innerHTML = '');
+  grades.forEach(grade => {
+    grade.floors.forEach(f => {
+      const zone = document.getElementById(`dropzone-${f}`);
+      if (zone) {
+        const block = document.createElement('div');
+        block.className = `grade-block px-5 py-2.5 bg-white border border-emerald-200 rounded-2xl text-sm font-medium shadow-sm flex items-center gap-2`;
+        block.draggable = true;
+        block.dataset.gradeId = grade.id;
+        block.innerHTML = `
+          <span style="color:${colors[(grade.id-1)%colors.length]}">${grade.name}</span>
+          <button onclick="removeFromFloor(${grade.id}, ${f}); event.stopImmediatePropagation();" class="ml-auto text-red-400 hover:text-red-600 text-xs">×</button>
+        `;
+        block.addEventListener('dragstart', e => {
+          e.dataTransfer.setData('text/plain', `${grade.id}|${f}`);
+        });
+        zone.appendChild(block);
+      }
+    });
+  });
+}
+
+function removeFromFloor(gradeId, floor) {
+  const grade = grades.find(g => g.id === gradeId);
+  if (grade) {
+    grade.floors = grade.floors.filter(f => f !== floor);
+    renderFloorPlan();
+    renderFloorSummary();
+    updateOverall();
+  }
+}
+
+function renderGradeBlocks() {
+  const container = document.getElementById('gradeBlocks');
+  container.innerHTML = '';
+  grades.forEach(grade => {
+    const block = document.createElement('div');
+    block.className = `grade-block px-6 py-5 bg-white border-2 border-emerald-200 rounded-3xl text-center shadow-sm hover:border-emerald-400`;
+    block.draggable = true;
+    block.dataset.gradeId = grade.id;
+    block.innerHTML = `
+      <div style="color:${colors[(grade.id-1)%colors.length]}" class="font-bold text-lg">${grade.name}</div>
+    `;
+    block.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', grade.id);
+    });
+    container.appendChild(block);
+  });
+}
+
+function renderFloorSummary() {
+  const container = document.getElementById('floorSummary');
+  container.innerHTML = grades.map(grade => {
+    const avg = getAverageFloor(grade);
+    const display = avg === null ? '-' : (avg === 0 ? 'G/F' : avg.toFixed(1) + '/F');
+    return `
+      <div class="bg-white border border-emerald-100 rounded-2xl p-4 text-center">
+        <div style="color:${colors[(grade.id-1)%colors.length]}" class="font-bold">${grade.name}</div>
+        <div class="text-2xl font-semibold ${avg === null ? 'text-gray-400' : 'text-emerald-600'}">${display}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderDestinations() {
+  const container = document.getElementById('destinationsContainer');
+  container.innerHTML = destinations.map((d,i) => `
+    <div class="flex gap-4 items-center bg-white border border-gray-200 p-5 rounded-2xl">
+      <input type="text" value="${d.name}" onchange="updateDestination(${i},'name',this.value)" class="flex-1 bg-transparent border-b focus:border-emerald-500 outline-none font-medium">
+      <input type="number" step="0.1" value="${d.floor}" onchange="updateDestination(${i},'floor',this.value)" class="w-20 text-center border border-gray-300 rounded-xl py-2">
+      <button onclick="deleteDestination(${i})" class="text-red-500 hover:text-red-600">刪</button>
+    </div>
+  `).join('');
+  updateFormulaDisplay();
+  renderProbTable();
+}
+
+function renderProbTable() {
+  const container = document.getElementById('probTableContainer');
+  let html = `<table class="w-full border-collapse"><thead><tr class="bg-emerald-50"><th class="p-3 text-left">年級</th>`;
+  destinations.forEach(d => html += `<th class="p-3 text-center">${d.name}</th>`);
+  html += `</tr></thead><tbody>`;
+
+  grades.forEach((grade, gIdx) => {
+    html += `<tr class="border-t"><td class="p-3 font-medium" style="color:${colors[(grade.id-1)%colors.length]}">${grade.name}</td>`;
+    destinations.forEach((_, pIdx) => {
+      html += `<td class="p-3 text-center">
+        <input type="number" step="0.001" value="${(grade.probs[pIdx]||0).toFixed(3)}" 
+               onchange="updateProb(${gIdx}, ${pIdx}, this.value)" 
+               class="w-20 mx-auto border border-gray-300 rounded-xl py-2 text-center">
+      </td>`;
+    });
+    html += `</tr>`;
+  });
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+}
+
+function updateProb(gIdx, pIdx, val) {
+  grades[gIdx].probs[pIdx] = parseFloat(val) || 0;
+  updateOverall();
+}
+
+function addDestination() {
+  destinations.push({id:Date.now(), name:"新目的地", floor:3});
+  grades.forEach(g => g.probs.push(0));
+  renderDestinations();
+}
+
+function deleteDestination(i) {
+  if (destinations.length <= 1) return alert("至少保留一個目的地！");
+  destinations.splice(i,1);
+  grades.forEach(g => g.probs.splice(i,1));
+  renderDestinations();
+}
+
+function updateDestination(i, field, val) {
+  destinations[i][field] = field === 'floor' ? parseFloat(val) : val;
+  renderDestinations();
+  updateOverall();
+}
+
+function updateOverall() {
+  document.getElementById('overallIndex').textContent = calculateSchoolAverage();
+  renderFloorSummary();
+}
+
+// 完整排序功能 - 確保只有 n! 種組合
+function showAllConfigurations() {
+  const modal = document.getElementById('optModal');
+  const results = document.getElementById('optResults');
+  const title = document.getElementById('modalTitle');
+
+  const n = grades.length;
+  title.textContent = `全部 ${factorial(n)} 種年級排序配置`;
+
+  let configs = [];
+  const floors = grades.map(g => getAverageFloor(g) || 0);   // 使用每個年級的平均樓層作為基礎
+
+  function permute(arr, start = 0) {
+    if (start === arr.length - 1) {
+      let assignment = {};
+      grades.forEach((g, i) => assignment[g.id] = arr[i]);
+      const avg = calculateSchoolAverageWithAssignment(assignment);
+      configs.push({assignment, avg});
+      return;
+    }
+    for (let i = start; i < arr.length; i++) {
+      [arr[start], arr[i]] = [arr[i], arr[start]];
+      permute([...arr], start + 1);
+      [arr[start], arr[i]] = [arr[i], arr[start]];
+    }
+  }
+
+  permute([...floors]);
+
+  configs.sort((a, b) => currentSortMode === 'lowToHigh' ? a.avg - b.avg : b.avg - a.avg);
+
+  let html = `<p class="text-gray-600 mb-6">以下為全部 ${configs.length} 種排序結果（${currentSortMode === 'lowToHigh' ? '由低至高' : '由高至低'}）：</p>`;
+
+  configs.forEach((config, rank) => {
+    html += `
+      <div class="border rounded-2xl p-5 mb-4 bg-white">
+        <div class="flex justify-between items-center mb-4">
+          <span class="font-bold text-xl">第 ${rank+1} 種</span>
+          <span class="font-mono text-2xl font-bold">${config.avg}</span>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-6 gap-x-6 gap-y-2 text-sm">`;
+    grades.forEach(grade => {
+      const sug = config.assignment[grade.id];
+      html += `
+        <div class="flex items-center gap-2">
+          <span style="color:${colors[(grade.id-1)%colors.length]}">${grade.name}</span>
+          <span class="text-gray-500">→</span>
+          <span class="font-semibold">${sug === 0 ? 'G/F' : sug.toFixed(1) + '/F'}</span>
+        </div>`;
+    });
+    html += `</div></div>`;
+  });
+
+  results.innerHTML = html;
+  modal.classList.remove('hidden');
+}
+
+function calculateSchoolAverageWithAssignment(assignment) {
+  let totalW = 0, totalS = 0;
+  grades.forEach(g => {
+    const fl = assignment[g.id] || 0;
+    let total = 0;
+    destinations.forEach((dest,i) => total += (g.probs[i]||0) * Math.abs(fl - dest.floor));
+    totalW += (total * 2) * g.students;
+    totalS += g.students;
+  });
+  return totalS ? (totalW / totalS).toFixed(3) : "0.000";
+}
+
+function toggleSortMode() {
+  currentSortMode = currentSortMode === 'lowToHigh' ? 'highToLow' : 'lowToHigh';
+  document.getElementById('modalSortBtn').textContent = currentSortMode === 'lowToHigh' ? '切換為由高至低排序' : '切換為由低至高排序';
+  showAllConfigurations();
+}
+
+function closeModal() {
+  document.getElementById('optModal').classList.add('hidden');
+}
+
+function factorial(n) {
+  return n <= 1 ? 1 : n * factorial(n - 1);
+}
+
+// 初始化
+window.onload = () => {
+  renderFloorPlan();
+  renderGradeBlocks();
+  renderDestinations();
+  renderFloorSummary();
+  updateOverall();
+};
+</script>
+</body>
+</html>
